@@ -10,19 +10,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:#1a1a2e;
   font-family:'PingFang SC','Microsoft YaHei',sans-serif;
   touch-action:manipulation;-webkit-tap-highlight-color:transparent;
   -webkit-user-select:none;user-select:none;
-  display:flex;justify-content:center;align-items:center;
 }
-#wrap{position:relative;width:100vw;height:100vh;max-width:500px;max-height:900px;
-  display:flex;flex-direction:column;background:#2d1b4e;overflow:hidden;
-}
+#wrap{width:100%;height:100%;display:flex;flex-direction:column;background:#2d1b4e;}
 #hud{display:flex;justify-content:space-around;align-items:center;
   padding:8px 4px;background:rgba(0,0,0,0.7);z-index:10;flex-shrink:0;
 }
 .hud-item{display:flex;align-items:center;gap:4px;color:#fff;font-size:13px;font-weight:700;}
 .hud-item .ico{font-size:18px;}
 .hud-s{color:#fdcb6e;}.hud-t{color:#a29bfe;}.hud-o{color:#55efc4;}.hud-c{color:#fd79a8;}
-#game-area{flex:1;position:relative;overflow:hidden;}
-canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
+#game-area{flex:1;position:relative;overflow:hidden;min-height:0;}
+canvas{display:block;width:100%;height:100%;}
 #ctrl{position:absolute;bottom:0;left:0;right:0;z-index:20;
   display:flex;justify-content:space-between;align-items:flex-end;
   padding:10px 16px;padding-bottom:max(10px,env(safe-area-inset-bottom));
@@ -49,9 +46,9 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
 }
 #overlay.show{pointer-events:all;}
 .obox{background:rgba(255,255,255,0.97);border-radius:20px;padding:24px 28px;
-  text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);max-width:320px;
+  text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);max-width:300px;
 }
-.obox h2{font-size:24px;margin-bottom:6px;color:#e84393;}
+.obox h2{font-size:22px;margin-bottom:6px;color:#e84393;}
 .obox p{font-size:13px;color:#636e72;margin:4px 0;line-height:1.5;}
 .obox .btn{display:inline-block;margin-top:14px;padding:12px 32px;
   border:none;border-radius:25px;font-size:17px;font-weight:700;
@@ -59,9 +56,6 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
   box-shadow:0 4px 15px rgba(108,92,231,0.4);cursor:pointer;
 }
 .obox .btn:active{transform:scale(0.94);}
-#loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  color:#fff;font-size:18px;z-index:5;
-}
 </style>
 </head>
 <body>
@@ -74,7 +68,6 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
   </div>
   <div id="game-area">
     <canvas id="cv"></canvas>
-    <div id="loading">🎀 加载中...</div>
     <div id="ctrl">
       <div class="dpad">
         <button class="gap"></button><button id="bu">▲</button><button class="gap"></button>
@@ -88,7 +81,8 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
 </div>
 
 <script>
-// ==================== IMAGE LOADING ====================
+(function(){
+// ==================== IMAGE LOADING (non-blocking) ====================
 const IMG = {};
 const imgList = [
   ['bg','assets/kitchen-bg.png'],
@@ -97,30 +91,29 @@ const imgList = [
   ['dishes','assets/dishes.png'],
   ['customers','assets/customers.png'],
 ];
-let loadedCount = 0;
 imgList.forEach(([key,src])=>{
   const img = new Image();
-  img.onload = ()=>{ loadedCount++; if(loadedCount===imgList.length) startReady(); };
-  img.onerror = ()=>{ loadedCount++; if(loadedCount===imgList.length) startReady(); };
+  img.onload = ()=>{ IMG[key] = img; };
+  img.onerror = ()=>{};
   img.src = src;
-  IMG[key] = img;
 });
 
-// ==================== CANVAS SETUP ====================
+// ==================== CANVAS ====================
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
-let W,H,scale;
+let W,H;
 
 function resize(){
   const area = document.getElementById('game-area');
-  W = area.clientWidth; H = area.clientHeight;
+  const r = area.getBoundingClientRect();
+  W = r.width; H = r.height;
+  if(W<=0||H<=0){ W=400; H=600; }
   cv.width = W; cv.height = H;
-  scale = Math.min(W/800, H/520);
 }
 window.addEventListener('resize', resize);
-resize();
+window.addEventListener('orientationchange', ()=>{ setTimeout(resize, 200); });
 
-// ==================== GAME STATE ====================
+// ==================== STATE ====================
 const GS = { MENU:0, PLAY:1, OVER:2 };
 let gs = GS.MENU, score=0, orders=0, combo=0, timeLeft=180, ti=null;
 let shakeT=0, shakeI=0;
@@ -160,7 +153,7 @@ const INGREDIENTS = ['米饭','蔬菜','鱼','肉'];
 const ING_ICON = {'米饭':'🍚','蔬菜':'🥬','鱼':'🐟','肉':'🥩'};
 const ING_COLOR = {'米饭':'#fff9e6','蔬菜':'#d4edc9','鱼':'#c8d6e5','肉':'#f8c291'};
 
-// ==================== STATIONS (relative coords 0-1) ====================
+// ==================== STATIONS ====================
 const STATIONS = [
   { id:'ing', rx:0.10, ry:0.15, w:60, h:60, label:'食材', color:'#ffeaa7', icon:'🥬' },
   { id:'chop', rx:0.35, ry:0.15, w:60, h:60, label:'切菜', color:'#dfe6e9', icon:'🔪' },
@@ -184,60 +177,64 @@ const MAX_CUST=4, PATIENCE=40;
 // ==================== EFFECTS ====================
 let parts=[], floats=[];
 
-function spawnParts(x,y,color,n=12){
-  for(let i=0;i<n;i++) parts.push({x,y,vx:(Math.random()-.5)*3,vy:(Math.random()-.5)*3-1.5,life:1,decay:.02+Math.random()*.04,color,size:2+Math.random()*3});
+function spawnParts(x,y,color,n){
+  n=n||12;
+  for(let i=0;i<n;i++) parts.push({x:x,y:y,vx:(Math.random()-.5)*3,vy:(Math.random()-.5)*3-1.5,life:1,decay:.02+Math.random()*.04,color:color,size:2+Math.random()*3});
 }
-function spawnFloat(x,y,text,color='#fff'){
-  floats.push({x,y,text,color,life:1,decay:.018});
+function spawnFloat(x,y,text,color){
+  floats.push({x:x,y:y,text:text,color:color||'#fff',life:1,decay:.018});
 }
 
 // ==================== HELPERS ====================
 function near(px,py,s){
-  const sx=s.rx*W, sy=s.ry*H;
+  var sx=s.rx*W, sy=s.ry*H;
   return Math.abs(px-sx)<(P.w+s.w)/2+4 && Math.abs(py-sy)<(P.h+s.h)/2+4;
 }
-function getStation(px,py){ for(const s of STATIONS) if(near(px,py,s)) return s; return null; }
+function getStation(px,py){
+  for(var i=0;i<STATIONS.length;i++){ if(near(px,py,STATIONS[i])) return STATIONS[i]; }
+  return null;
+}
 
 function spawnCust(){
   if(customers.length>=MAX_CUST) return;
-  const r=RECIPES[Math.floor(Math.random()*RECIPES.length)];
-  const ci=Math.floor(Math.random()*CUST_NAMES.length);
-  const rx=0.06+customers.length*0.12;
-  customers.push({name:CUST_NAMES[ci],icon:CUST_ICONS[ci],recipe:r,patience:PATIENCE,maxP:PATIENCE,rx,ry:0.88,served:false,leaving:false,leaveA:0});
+  var r=RECIPES[Math.floor(Math.random()*RECIPES.length)];
+  var ci=Math.floor(Math.random()*CUST_NAMES.length);
+  var rx=0.06+customers.length*0.12;
+  customers.push({name:CUST_NAMES[ci],icon:CUST_ICONS[ci],recipe:r,patience:PATIENCE,maxP:PATIENCE,rx:rx,ry:0.88,served:false,leaving:false,leaveA:0});
 }
 
 function processStation(id){
-  const st=SS[id]; if(!st||!st.busy||!st.item) return;
+  var st=SS[id]; if(!st||!st.busy||!st.item) return;
   st.prog+=0.022;
   if(st.prog>=1){
     st.busy=false;st.prog=0;
-    const s=STATIONS.find(s=>s.id===id);
+    var s=null; for(var i=0;i<STATIONS.length;i++){ if(STATIONS[i].id===id){s=STATIONS[i];break;} }
     if(id==='chop') st.item={type:'chopped',name:st.item.name,icon:'🔪',color:ING_COLOR[st.item.name]};
     else if(id==='stove') st.item={type:'cooked',name:st.item.name,icon:'🍳',color:'#fdcb6e',station:'stove'};
     else if(id==='pot') st.item={type:'cooked',name:st.item.name,icon:'🍲',color:'#81ecec',station:'pot'};
-    spawnParts(s.rx*W,s.ry*H,'#fdcb6e',15);
-    spawnFloat(s.rx*W,s.ry*H-20,'完成!','#00b894');
+    if(s){ spawnParts(s.rx*W,s.ry*H,'#fdcb6e',15); spawnFloat(s.rx*W,s.ry*H-20,'完成!','#00b894'); }
   }
 }
 
 function findRecipe(item){
   if(!item) return null;
-  for(const r of RECIPES){
+  for(var i=0;i<RECIPES.length;i++){
+    var r=RECIPES[i];
     if(item.name===r.ing&&((r.proc==='chop'&&item.type==='chopped')||(r.proc==='stove'&&item.type==='cooked'&&item.station==='stove')||(r.proc==='pot'&&item.type==='cooked'&&item.station==='pot'))) return r;
   }
   return null;
 }
 
-let actCd=0;
+var actCd=0;
 function doAction(){
   if(actCd>0) return;
   actCd=14;
-  const st=getStation(P.x,P.y);
+  var st=getStation(P.x,P.y);
   if(!st) return;
 
   if(st.id==='ing'){
     if(!P.hold){
-      const ing=INGREDIENTS[Math.floor(Math.random()*INGREDIENTS.length)];
+      var ing=INGREDIENTS[Math.floor(Math.random()*INGREDIENTS.length)];
       P.hold={type:'raw',name:ing,icon:ING_ICON[ing],color:ING_COLOR[ing]};
       spawnParts(st.rx*W,st.ry*H,ING_COLOR[ing],8);
     }
@@ -267,13 +264,14 @@ function doAction(){
     }
   }else if(st.id==='serve'){
     if(P.hold){
-      const recipe=findRecipe(P.hold);
+      var recipe=findRecipe(P.hold);
       if(recipe){
-        for(const cust of customers){
+        for(var i=0;i<customers.length;i++){
+          var cust=customers[i];
           if(cust.served||cust.leaving) continue;
           if(cust.recipe.id===recipe.id){
             cust.served=true;cust.leaving=true;P.hold=null;
-            combo++;const bonus=combo>1?combo*5:0;
+            combo++;var bonus=combo>1?combo*5:0;
             score+=recipe.pts+bonus;orders++;
             spawnParts(cust.rx*W,cust.ry*H,'#fdcb6e',25);
             spawnParts(cust.rx*W,cust.ry*H,'#00b894',15);
@@ -295,57 +293,46 @@ function updateUI(){
 }
 
 // ==================== DRAWING ====================
-function rrect(x,y,w,h,r,color){
-  ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x-w/2,y-h/2,w,h,r);ctx.fill();
-}
-
 function drawBg(){
   if(IMG.bg&&IMG.bg.complete&&IMG.bg.naturalWidth){
-    // Draw kitchen background image, cover the canvas
-    const iw=IMG.bg.naturalWidth, ih=IMG.bg.naturalHeight;
-    const ratio=Math.max(W/iw, H/ih);
-    const dw=iw*ratio, dh=ih*ratio;
-    const dx=(W-dw)/2, dy=(H-dh)/2;
-    ctx.drawImage(IMG.bg, dx, dy, dw, dh);
-    // Darken slightly for contrast
+    var iw=IMG.bg.naturalWidth, ih=IMG.bg.naturalHeight;
+    var ratio=Math.max(W/iw, H/ih);
+    var dw=iw*ratio, dh=ih*ratio;
+    ctx.drawImage(IMG.bg, (W-dw)/2, (H-dh)/2, dw, dh);
     ctx.fillStyle='rgba(0,0,0,0.15)';ctx.fillRect(0,0,W,H);
   }else{
-    // Fallback tiles
-    const ts=40;
-    for(let x=0;x<W;x+=ts) for(let y=0;y<H;y+=ts){
-      ctx.fillStyle=(Math.floor(x/ts)+Math.floor(y/ts))%2===0?'#fff5f9':'#fce4ec';
-      ctx.fillRect(x,y,ts,ts);
+    // Fallback: pretty pastel tiles
+    var ts=40;
+    for(var x=0;x<W;x+=ts){
+      for(var y=0;y<H;y+=ts){
+        ctx.fillStyle=(Math.floor(x/ts)+Math.floor(y/ts))%2===0?'#fff5f9':'#fce4ec';
+        ctx.fillRect(x,y,ts,ts);
+      }
     }
   }
 }
 
 function drawStation(s){
-  const sx=s.rx*W, sy=s.ry*H;
+  var sx=s.rx*W, sy=s.ry*H;
   // Glow
   ctx.fillStyle='rgba(255,255,255,0.3)';ctx.beginPath();
   ctx.roundRect(sx-s.w/2-4,sy-s.h/2-4,s.w+8,s.h+8,16);ctx.fill();
-
   // Body
-  const g=ctx.createLinearGradient(sx-s.w/2,sy-s.h/2,sx+s.w/2,sy+s.h/2);
+  var g=ctx.createLinearGradient(sx-s.w/2,sy-s.h/2,sx+s.w/2,sy+s.h/2);
   g.addColorStop(0,s.color);g.addColorStop(1,'#ffffff');
   ctx.fillStyle=g;ctx.beginPath();
   ctx.roundRect(sx-s.w/2,sy-s.h/2,s.w,s.h,14);ctx.fill();
-
-  // Border
   ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=2;ctx.stroke();
-
   // Icon
   ctx.font='24px serif';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.fillText(s.icon,sx,sy-4);
-
   // Label
   ctx.font='bold 10px "PingFang SC","Microsoft YaHei",sans-serif';ctx.fillStyle='#2d3436';
   ctx.fillText(s.label,sx,sy+22);
-
   // Progress
-  const ss=SS[s.id];
+  var ss=SS[s.id];
   if(ss&&ss.busy){
-    const bw=s.w-10,bh=5,by=sy+s.h/2-3;
+    var bw=s.w-10,bh=5,by=sy+s.h/2-3;
     ctx.fillStyle='rgba(0,0,0,0.15)';ctx.fillRect(sx-bw/2,by,bw,bh);
     ctx.fillStyle='#00b894';ctx.fillRect(sx-bw/2,by,bw*ss.prog,bh);
     if(ss.item){ctx.font='14px serif';ctx.fillStyle='#2d3436';ctx.fillText(ss.item.icon||'?',sx,sy-26);}
@@ -357,32 +344,38 @@ function drawStation(s){
 }
 
 function drawPlayer(){
-  const p=P;
+  var p=P;
   // Shadow
   ctx.fillStyle='rgba(0,0,0,0.2)';ctx.beginPath();
   ctx.ellipse(p.x,p.y+p.h/2-2,p.w/2.5,4,0,0,Math.PI*2);ctx.fill();
 
   if(IMG.cinnamoroll&&IMG.cinnamoroll.complete&&IMG.cinnamoroll.naturalWidth){
-    // Draw Cinnamoroll image
-    const size=p.w*2.2;
+    var size=p.w*2.2;
     ctx.drawImage(IMG.cinnamoroll, p.x-size/2, p.y-size/2+2, size, size);
   }else{
-    // Fallback drawn Cinnamoroll
-    const bg=ctx.createRadialGradient(p.x-3,p.y-3,2,p.x,p.y,p.w/2);
+    // Fallback: draw cute Cinnamoroll
+    var bg=ctx.createRadialGradient(p.x-3,p.y-3,2,p.x,p.y,p.w/2);
     bg.addColorStop(0,'#ffffff');bg.addColorStop(0.8,'#f0e6f6');bg.addColorStop(1,'#e8d5f0');
     ctx.fillStyle=bg;ctx.beginPath();ctx.arc(p.x,p.y-2,p.w/2-2,0,Math.PI*2);ctx.fill();
+    // Ears
     ctx.fillStyle='#ffffff';
     ctx.beginPath();ctx.ellipse(p.x-9,p.y-17,7,13,-0.3,0,Math.PI*2);ctx.fill();
-    ctx.beginPath();ctx.ellipse(p.x+9,p.y-17,7,13,0.3,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#e8d5f0';ctx.lineWidth=1;ctx.stroke();
+    ctx.beginPath();ctx.ellipse(p.x+9,p.y-17,7,13,0.3,0,Math.PI*2);ctx.fill();ctx.stroke();
     ctx.fillStyle='#fdcb6e';
     ctx.beginPath();ctx.ellipse(p.x-9,p.y-17,4,9,-0.3,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.ellipse(p.x+9,p.y-17,4,9,0.3,0,Math.PI*2);ctx.fill();
+    // Eyes
     ctx.fillStyle='#2d3436';
     ctx.beginPath();ctx.arc(p.x-5,p.y-6,2.5,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.arc(p.x+5,p.y-6,2.5,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#fff';
     ctx.beginPath();ctx.arc(p.x-4,p.y-7,1,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.arc(p.x+6,p.y-7,1,0,Math.PI*2);ctx.fill();
+    // Mouth
+    ctx.strokeStyle='#e17055';ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(p.x,p.y-1,3,0.1,Math.PI-0.1);ctx.stroke();
+    // Blush
     ctx.fillStyle='rgba(253,121,168,0.4)';
     ctx.beginPath();ctx.arc(p.x-9,p.y-2,3,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.arc(p.x+9,p.y-2,3,0,Math.PI*2);ctx.fill();
@@ -399,33 +392,28 @@ function drawPlayer(){
 
 function drawCustomer(c){
   if(c.leaving){c.leaveA+=0.04;if(c.leaveA>=1) return;}
-  const alpha=c.leaving?1-c.leaveA:1;
+  var alpha=c.leaving?1-c.leaveA:1;
   ctx.globalAlpha=alpha;
-  const cx2=c.rx*W, cy2=c.ry*H;
+  var cx2=c.rx*W, cy2=c.ry*H;
 
-  // Shadow
   ctx.fillStyle='rgba(0,0,0,0.15)';ctx.beginPath();
   ctx.ellipse(cx2,cy2+20,16,5,0,0,Math.PI*2);ctx.fill();
 
-  // Body
-  const bg=ctx.createRadialGradient(cx2,cy2-5,3,cx2,cy2,16);
+  var bg=ctx.createRadialGradient(cx2,cy2-5,3,cx2,cy2,16);
   bg.addColorStop(0,'#ffffff');bg.addColorStop(1,'#ffe0ec');
   ctx.fillStyle=bg;ctx.beginPath();ctx.arc(cx2,cy2,16,0,Math.PI*2);ctx.fill();
 
-  // Face
   ctx.font='20px serif';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.fillText(c.icon,cx2,cy2);
 
-  // Order bubble
   ctx.fillStyle='rgba(255,255,255,0.95)';
   ctx.strokeStyle=c.recipe.color;ctx.lineWidth=2;
   ctx.beginPath();ctx.roundRect(cx2-30,cy2-48,60,24,10);ctx.fill();ctx.stroke();
   ctx.fillStyle='#2d3436';ctx.font='11px serif';
   ctx.fillText(c.recipe.icon+' '+c.recipe.name,cx2,cy2-36);
 
-  // Patience
-  const bw=30,bh=4,by=cy2+22;
-  const ratio=c.patience/c.maxP;
+  var bw=30,bh=4,by=cy2+22;
+  var ratio=c.patience/c.maxP;
   ctx.fillStyle='rgba(0,0,0,0.12)';ctx.fillRect(cx2-bw/2,by,bw,bh);
   ctx.fillStyle=ratio>0.5?'#00b894':ratio>0.25?'#fdcb6e':'#e17055';
   ctx.fillRect(cx2-bw/2,by,bw*ratio,bh);
@@ -436,7 +424,8 @@ function drawCustomer(c){
 }
 
 function drawParts(){
-  for(const p of parts){
+  for(var i=0;i<parts.length;i++){
+    var p=parts[i];
     ctx.globalAlpha=p.life;ctx.fillStyle=p.color;
     ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
   }
@@ -444,7 +433,8 @@ function drawParts(){
 }
 
 function drawFloats(){
-  for(const f of floats){
+  for(var i=0;i<floats.length;i++){
+    var f=floats[i];
     ctx.globalAlpha=f.life;ctx.fillStyle=f.color;
     ctx.font='bold 13px "PingFang SC","Microsoft YaHei",sans-serif';
     ctx.textAlign='center';ctx.fillText(f.text,f.x,f.y-f.life*18);
@@ -454,36 +444,25 @@ function drawFloats(){
 
 function drawHUD(){
   if(P.hold){
-    const tw=ctx.measureText('手持: '+P.hold.name).width+30;
+    var txt='手持: '+(P.hold.icon||'')+' '+P.hold.name;
+    var tw=ctx.measureText(txt).width+30;
     ctx.fillStyle='rgba(0,0,0,0.7)';ctx.beginPath();
     ctx.roundRect(W-tw-8,6,tw,30,10);ctx.fill();
     ctx.fillStyle='#fff';ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';ctx.textAlign='right';
-    ctx.fillText('手持: '+(P.hold.icon||'')+' '+P.hold.name,W-10,26);
+    ctx.fillText(txt,W-10,26);
   }
 }
 
 function drawOverlay(){
-  const obox=document.getElementById('obox');
-  const overlay=document.getElementById('overlay');
+  var overlay=document.getElementById('overlay');
+  var obox=document.getElementById('obox');
   if(gs===GS.MENU){
     overlay.classList.add('show');
-    obox.innerHTML=`
-      <h2>🎀 玉桂狗厨房</h2>
-      <p>Cinnamoroll Kitchen</p>
-      <p>帮玉桂狗做出客人想要的菜式!</p>
-      <p style="font-size:11px;color:#b2bec3;">🥬拿食材 → 🔪切菜 → 🍳/🍲烹饪 → 🍽️上菜</p>
-      <button class="btn" onclick="startGame()">🎮 开始游戏</button>
-    `;
+    obox.innerHTML='<h2>🎀 玉桂狗厨房</h2><p>Cinnamoroll Kitchen</p><p>帮玉桂狗做出客人想要的菜式!</p><p style="font-size:11px;color:#b2bec3;">🥬拿食材 → 🔪切菜 → 🍳/🍲烹饪 → 🍽️上菜</p><button class="btn" onclick="window._startGame()">🎮 开始游戏</button>';
   }else if(gs===GS.OVER){
     overlay.classList.add('show');
-    const stars=orders>=8?'⭐⭐⭐':orders>=5?'⭐⭐':'⭐';
-    obox.innerHTML=`
-      <h2>⏰ 时间到!</h2>
-      <p>⭐ 得分: ${score}</p>
-      <p>📋 完成: ${orders} 单</p>
-      <p style="font-size:24px;">${stars}</p>
-      <button class="btn" onclick="startGame()">🔄 再来一局</button>
-    `;
+    var stars=orders>=8?'⭐⭐⭐':orders>=5?'⭐⭐':'⭐';
+    obox.innerHTML='<h2>⏰ 时间到!</h2><p>⭐ 得分: '+score+'</p><p>📋 完成: '+orders+' 单</p><p style="font-size:24px;">'+stars+'</p><button class="btn" onclick="window._startGame()">🔄 再来一局</button>';
   }else{
     overlay.classList.remove('show');
   }
@@ -491,18 +470,16 @@ function drawOverlay(){
 
 function draw(){
   ctx.clearRect(0,0,W,H);
-  let sx=0,sy=0;
+  var sx=0,sy=0;
   if(shakeT>0){sx=(Math.random()-.5)*shakeI;sy=(Math.random()-.5)*shakeI;}
   ctx.save();ctx.translate(sx,sy);
-
   drawBg();
-  for(const s of STATIONS) drawStation(s);
-  for(const c of customers) drawCustomer(c);
+  for(var i=0;i<STATIONS.length;i++) drawStation(STATIONS[i]);
+  for(var i=0;i<customers.length;i++) drawCustomer(customers[i]);
   drawPlayer();
   drawParts();
   drawFloats();
   drawHUD();
-
   ctx.restore();
   drawOverlay();
 }
@@ -511,7 +488,7 @@ function draw(){
 function update(){
   if(gs!==GS.PLAY) return;
 
-  let dx=0,dy=0;
+  var dx=0,dy=0;
   if(K['ArrowUp']||K['w']||K['W']) dy=-1;
   if(K['ArrowDown']||K['s']||K['S']) dy=1;
   if(K['ArrowLeft']||K['a']||K['A']) dx=-1;
@@ -531,18 +508,19 @@ function update(){
   spawnT++;
   if(spawnT>280){spawnT=0;spawnCust();}
 
-  for(const c of customers){
+  for(var i=0;i<customers.length;i++){
+    var c=customers[i];
     if(!c.served&&!c.leaving){
       c.patience-=.015;
       if(c.patience<=0){c.leaving=true;combo=0;spawnParts(c.rx*W,c.ry*H,'#e17055',10);spawnFloat(c.rx*W,c.ry*H-20,'走了!','#e17055');updateUI();}
     }
   }
-  customers=customers.filter(c=>c.leaveA<1||!c.leaving);
+  customers=customers.filter(function(c){return c.leaveA<1||!c.leaving;});
 
-  for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.life-=p.decay;}
-  parts=parts.filter(p=>p.life>0);
-  for(const f of floats){f.y-=.4;f.life-=f.decay;}
-  floats=floats.filter(f=>f.life>0);
+  for(var i=0;i<parts.length;i++){var p=parts[i];p.x+=p.vx;p.y+=p.vy;p.life-=p.decay;}
+  parts=parts.filter(function(p){return p.life>0;});
+  for(var i=0;i<floats.length;i++){var f=floats[i];f.y-=.4;f.life-=f.decay;}
+  floats=floats.filter(function(f){return f.life>0;});
   if(shakeT>0) shakeT--;
 }
 
@@ -550,7 +528,7 @@ function loop(){update();draw();requestAnimationFrame(loop);}
 
 // ==================== TIMER ====================
 function startTimer(){
-  ti=setInterval(()=>{
+  ti=setInterval(function(){
     if(gs!==GS.PLAY) return;
     timeLeft--;updateUI();
     if(timeLeft<=0){gs=GS.OVER;clearInterval(ti);updateUI();}
@@ -571,29 +549,13 @@ function startGame(){
   startTimer();spawnCust();
 }
 
-function startReady(){
-  document.getElementById('loading').style.display='none';
-  resize();
-  updateUI();loop();
-}
+window._startGame = startGame;
 
-// Fallback: start even if images fail
-setTimeout(()=>{
-  if(loadedCount<imgList.length){
-    document.getElementById('loading').style.display='none';
-    resize();updateUI();loop();
-  }
-},5000);
-
-// Handle resize
-window.addEventListener('resize',()=>{
-  resize();
-  P.x=Math.max(P.w/2,Math.min(W-P.w/2,P.x));
-  P.y=Math.max(P.h/2,Math.min(H-P.h/2,P.y));
-});
-
-// Expose startGame globally for onclick
-window.startGame=startGame;
+// ==================== INIT ====================
+resize();
+updateUI();
+loop();
+})();
 </script>
 </body>
 </html>
